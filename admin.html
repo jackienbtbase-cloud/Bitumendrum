@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; background: #eef2f5; }
+        .box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #1976d2; }
+        input { padding: 8px; margin: 5px 0; width: 100%; max-width: 250px; box-sizing: border-box; }
+        button { padding: 8px 15px; background: #1976d2; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #115293; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9em; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #f4f4f4; }
+        
+        /* Mobile responsive table */
+        @media (max-width: 600px) {
+            table, thead, tbody, th, td, tr { display: block; }
+            th { display: none; }
+            td { position: relative; padding-left: 50%; text-align: right; }
+            td::before { content: attr(data-label); position: absolute; left: 10px; width: 45%; padding-right: 10px; white-space: nowrap; text-align: left; font-weight: bold; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Login Section -->
+<div id="login-section" class="box" style="text-align: center; margin-top: 10vh;">
+    <h2>Enter Administrator Password</h2>
+    <input type="password" id="admin-password" placeholder="Enter password" style="text-align: center;">
+    <br><br>
+    <button onclick="checkPassword()">Login</button>
+</div>
+
+<!-- Admin Section (Hidden until login) -->
+<div id="admin-section" style="display: none;">
+    <div class="box">
+        <h2>1. Register New Bitumen Drum</h2>
+        <input type="text" id="new-supplier" placeholder="Supplier (e.g. Shell)">
+        <input type="number" id="new-price" placeholder="Price per Ton (RM)">
+        <input type="date" id="new-date">
+        <input type="number" id="new-stock" placeholder="Initial Stock (KG)">
+        <br><br>
+        <button onclick="addDrum()">Add to Database</button>
+    </div>
+
+    <div class="box">
+        <h2>2. Real-time Inventory & Deductions</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Supplier</th>
+                    <th>Arrival Date</th>
+                    <th>Remaining Stock (KG)</th>
+                    <th>Data ID (For QR Code)</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="drum-list">
+                <!-- List loads here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // --- 1. Supabase URL and Key ---
+    const supabaseUrl = 'https://yvtujoueyotncbvdlgyf.supabase.co'; 
+    const supabaseKey = 'sb_publishable_98O37WT0nSZVw2I9128JOg___CX38Dn'; 
+    const client = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // --- 2. Password Verification ---
+    function checkPassword() {
+        const pwd = document.getElementById('admin-password').value;
+        if (pwd === '8888') { 
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('admin-section').style.display = 'block';
+            fetchAllDrums(); 
+        } else {
+            alert("Incorrect password!");
+        }
+    }
+
+    // --- 3. Add New Drum ---
+    async function addDrum() {
+        const supplier = document.getElementById('new-supplier').value;
+        const price = document.getElementById('new-price').value;
+        const date = document.getElementById('new-date').value;
+        const stock = document.getElementById('new-stock').value;
+
+        if(!supplier || !price || !date || !stock) return alert("Please fill in all fields!");
+
+        const { data, error } = await client.from('bitumen_drums').insert([
+            { supplier: supplier, price_per_ton: price, arrival_date: date, remaining_stock: stock }
+        ]);
+
+        if (error) alert("Failed to add: " + error.message);
+        else {
+            alert("Added successfully!");
+            fetchAllDrums(); 
+            document.getElementById('new-supplier').value = '';
+            document.getElementById('new-price').value = '';
+            document.getElementById('new-stock').value = '';
+        }
+    }
+
+    // --- 4. Fetch and Display List ---
+    async function fetchAllDrums() {
+        const { data, error } = await client.from('bitumen_drums').select('*').order('arrival_date', { ascending: false });
+        
+        const tbody = document.getElementById('drum-list');
+        tbody.innerHTML = "";
+
+        if (data) {
+            data.forEach(drum => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td data-label="Supplier">${drum.supplier}</td>
+                    <td data-label="Arrival Date">${drum.arrival_date}</td>
+                    <td data-label="Remaining Stock (KG)" style="color:red; font-weight:bold;">${drum.remaining_stock}</td>
+                    <td data-label="Data ID" style="font-size:12px; color:#666; word-break: break-all;">${drum.id}</td>
+                    <td data-label="Action">
+                        <input type="number" id="deduct-${drum.id}" placeholder="Amount used (KG)?" style="width:140px; margin-right:5px;">
+                        <button style="background:#ff9800;" onclick="deductStock('${drum.id}', ${drum.remaining_stock})">Deduct</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
+    // --- 5. Deduct Stock ---
+    async function deductStock(id, currentStock) {
+        const usedAmount = parseFloat(document.getElementById(`deduct-${id}`).value);
+        if (!usedAmount || usedAmount <= 0) return alert("Please enter a valid amount to deduct.");
+
+        const newStock = currentStock - usedAmount;
+        if (newStock < 0) return alert("Deduction amount cannot exceed remaining stock!");
+
+        const { data, error } = await client.from('bitumen_drums').update({ remaining_stock: newStock }).eq('id', id);
+
+        if (error) alert("Update failed: " + error.message);
+        else {
+            alert("Deducted successfully!");
+            fetchAllDrums(); 
+        }
+    }
+</script>
+</body>
+</html>
