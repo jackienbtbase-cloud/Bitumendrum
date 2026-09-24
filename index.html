@@ -24,7 +24,6 @@
     
     <div id="data-container" style="display: none;">
         <div class="row"><span class="label">Supplier:</span> <span class="value" id="val-supplier"></span></div>
-        <div class="row"><span class="label">Price per Ton:</span> <span class="value" id="val-price"></span></div>
         <div class="row"><span class="label">Arrival Date:</span> <span class="value" id="val-date"></span></div>
         <div class="row"><span class="label">Remaining Stock:</span> <span class="value" id="val-stock" style="color:#d32f2f;"></span></div>
     </div>
@@ -54,7 +53,6 @@
             document.getElementById('error').style.display = 'block';
         } else {
             document.getElementById('val-supplier').innerText = data.supplier;
-            document.getElementById('val-price').innerText = "RM " + data.price_per_ton;
             document.getElementById('val-date').innerText = data.arrival_date;
             document.getElementById('val-stock').innerText = data.remaining_stock + " KG";
             document.getElementById('data-container').style.display = 'block';
