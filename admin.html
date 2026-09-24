@@ -6,17 +6,27 @@
     <title>Admin Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; background: #eef2f5; }
+        body { font-family: sans-serif; padding: 20px; max-width: 900px; margin: auto; background: #eef2f5; }
         .box { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         h2 { margin-top: 0; color: #1976d2; }
         input { padding: 8px; margin: 5px 0; width: 100%; max-width: 250px; box-sizing: border-box; }
-        button { padding: 8px 15px; background: #1976d2; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button { padding: 8px 15px; background: #1976d2; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
         button:hover { background: #115293; }
+        
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9em; }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; vertical-align: middle; }
         th { background: #f4f4f4; }
         
-        /* Mobile responsive table */
+        .qr-btn { background-color: #4CAF50; margin-bottom: 5px; }
+        .qr-btn:hover { background-color: #45a049; }
+        
+        /* Modal (Popup) styling for QR Code */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fff; margin: 15% auto; padding: 20px; border-radius: 8px; width: 300px; text-align: center; position: relative; }
+        .close-btn { position: absolute; right: 15px; top: 10px; color: #aaa; font-size: 24px; font-weight: bold; cursor: pointer; }
+        .close-btn:hover { color: black; }
+        #qr-image { width: 200px; height: 200px; margin-top: 15px; border: 1px solid #ddd; padding: 10px; border-radius: 8px; }
+
         @media (max-width: 600px) {
             table, thead, tbody, th, td, tr { display: block; }
             th { display: none; }
@@ -35,14 +45,14 @@
     <button onclick="checkPassword()">Login</button>
 </div>
 
-<!-- Admin Section (Hidden until login) -->
+<!-- Admin Section -->
 <div id="admin-section" style="display: none;">
     <div class="box">
         <h2>1. Register New Bitumen Drum</h2>
         <input type="text" id="new-supplier" placeholder="Supplier (e.g. Shell)">
         <input type="number" id="new-price" placeholder="Price per Ton (RM)">
         <input type="date" id="new-date">
-        <input type="number" id="new-stock" placeholder="Initial Stock (Drum)">
+        <input type="number" id="new-stock" placeholder="Initial Stock (KG)">
         <br><br>
         <button onclick="addDrum()">Add to Database</button>
     </div>
@@ -54,8 +64,9 @@
                 <tr>
                     <th>Supplier</th>
                     <th>Arrival Date</th>
-                    <th>Remaining Stock (Drum)</th>
-                    <th>Data ID (For QR Code)</th>
+                    <th>Remaining Stock (KG)</th>
+                    <th>Data ID</th>
+                    <th>QR Code</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -66,13 +77,23 @@
     </div>
 </div>
 
+<!-- QR Code Modal Popup -->
+<div id="qr-modal" class="modal">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeQRModal()">&times;</span>
+        <h3 id="qr-supplier-name" style="margin-top:0; color:#333;"></h3>
+        <p style="font-size: 12px; color:#666;">Scan to view details</p>
+        <img id="qr-image" src="" alt="QR Code">
+        <br><br>
+        <button onclick="window.print()" style="width: 100%;">Print QR Code</button>
+    </div>
+</div>
+
 <script>
-    // --- 1. Supabase URL and Key ---
     const supabaseUrl = 'https://yvtujoueyotncbvdlgyf.supabase.co'; 
     const supabaseKey = 'sb_publishable_98O37WT0nSZVw2I9128JOg___CX38Dn'; 
     const client = supabase.createClient(supabaseUrl, supabaseKey);
 
-    // --- 2. Password Verification ---
     function checkPassword() {
         const pwd = document.getElementById('admin-password').value;
         if (pwd === '8888') { 
@@ -84,7 +105,6 @@
         }
     }
 
-    // --- 3. Add New Drum ---
     async function addDrum() {
         const supplier = document.getElementById('new-supplier').value;
         const price = document.getElementById('new-price').value;
@@ -107,7 +127,6 @@
         }
     }
 
-    // --- 4. Fetch and Display List ---
     async function fetchAllDrums() {
         const { data, error } = await client.from('bitumen_drums').select('*').order('arrival_date', { ascending: false });
         
@@ -117,14 +136,21 @@
         if (data) {
             data.forEach(drum => {
                 const tr = document.createElement('tr');
+                // Construct the exact working URL for the QR code
+                const drumUrl = `https://jackienbtbase-cloud.github.io/Bitumendrum/index.html?id=${drum.id}`;
+                
                 tr.innerHTML = `
                     <td data-label="Supplier">${drum.supplier}</td>
                     <td data-label="Arrival Date">${drum.arrival_date}</td>
-                    <td data-label="Remaining Stock (Drum)" style="color:red; font-weight:bold;">${drum.remaining_stock}</td>
+                    <td data-label="Remaining Stock (KG)" style="color:red; font-weight:bold;">${drum.remaining_stock}</td>
                     <td data-label="Data ID" style="font-size:12px; color:#666; word-break: break-all;">${drum.id}</td>
+                    <td data-label="QR Code">
+                        <button class="qr-btn" onclick="showQR('${drum.supplier}', '${drumUrl}')">View QR</button>
+                    </td>
                     <td data-label="Action">
-                        <input type="number" id="deduct-${drum.id}" placeholder="Amount used (Drum)?" style="width:140px; margin-right:5px;">
-                        <button style="background:#ff9800;" onclick="deductStock('${drum.id}', ${drum.remaining_stock})">Deduct</button>
+                        <input type="number" id="deduct-${drum.id}" placeholder="Amount used (KG)?" style="width:140px; margin-bottom:5px;">
+                        <br>
+                        <button style="background:#ff9800; width:140px;" onclick="deductStock('${drum.id}', ${drum.remaining_stock})">Deduct</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -132,7 +158,6 @@
         }
     }
 
-    // --- 5. Deduct Stock ---
     async function deductStock(id, currentStock) {
         const usedAmount = parseFloat(document.getElementById(`deduct-${id}`).value);
         if (!usedAmount || usedAmount <= 0) return alert("Please enter a valid amount to deduct.");
@@ -146,6 +171,31 @@
         else {
             alert("Deducted successfully!");
             fetchAllDrums(); 
+        }
+    }
+
+    // QR Code generation function using external API
+    function showQR(supplier, url) {
+        const qrModal = document.getElementById('qr-modal');
+        const qrImage = document.getElementById('qr-image');
+        const qrTitle = document.getElementById('qr-supplier-name');
+        
+        qrTitle.innerText = supplier + " Drum";
+        // Call a free API to instantly generate the QR code image based on the correct URL
+        qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`;
+        qrModal.style.display = "block";
+    }
+
+    function closeQRModal() {
+        document.getElementById('qr-modal').style.display = "none";
+        document.getElementById('qr-image').src = "";
+    }
+
+    // Close modal if user clicks outside of it
+    window.onclick = function(event) {
+        const modal = document.getElementById('qr-modal');
+        if (event.target == modal) {
+            closeQRModal();
         }
     }
 </script>
